@@ -1,0 +1,39 @@
+#!/bin/bash
+SHARED_SECRET="<Your secret>"
+LENGTH=8
+DOMAIN="example.com"
+MAILDROP="permanent-address@example.com"
+
+INTERFACE="127.0.0.1"
+PORT="10000"
+
+listMails() {
+	for day in yesterday now; do
+		echo "`(date +%Y%m%d -d \"${day}\" | tr -d '\n'; echo -n \"${SHARED_SECRET}\";) | md5sum | cut -c1-${LENGTH}`@${DOMAIN}"
+	done
+}
+
+# Start the listener
+if [ -n "$1" -a "$1" == "-l" ]; then
+	socat TCP-LISTEN:${PORT},fork,bind=${INTERFACE} SYSTEM:"$0 -q"
+fi
+
+# Process remote query
+if [ -n "$1" -a "$1" == "-q" ]; then
+	while read q; do
+		match=false
+		for mail in `listMails`; do
+			if echo -n "$q" | grep -xi "GET ${mail}" &> /dev/null; then
+				echo "200 ${MAILDROP}";
+				match=true
+				break;
+			fi
+		done
+		! $match && echo "500 ADDRESS NOT FOUND"
+	done
+fi
+
+# List mails
+if [ -z "$1" ]; then
+	listMails
+fi
