@@ -15,7 +15,7 @@ listMails() {
 
 # Start the listener
 if [ -n "$1" -a "$1" == "-l" ]; then
-	socat TCP-LISTEN:${PORT},fork,bind=${INTERFACE} SYSTEM:"$0 -q"
+	socat TCP-LISTEN:${PORT},fork,reuseaddr,bind=${INTERFACE} SYSTEM:"$0 -q"
 fi
 
 # Process remote query
