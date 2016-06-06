@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONF="/etc/postfix/trashmail.com"
+CONF="/etc/postfix/trashmail.conf"
 source "${CONF}" || echo "ERROR: Could not read ${CONF}" 1>&2 && exit 1
 
 # List valid email addresses
