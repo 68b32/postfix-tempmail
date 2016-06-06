@@ -1,5 +1,5 @@
 [Unit]
-Description=Postfix trashmail lookup daemon
+Description=Postfix trashmail socketmap lookup daemon
 Before=postfix.service
 
 [Service]

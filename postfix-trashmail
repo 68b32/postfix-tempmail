@@ -1,39 +1,168 @@
 #!/bin/bash
+
+# E-Mail adresses
 SHARED_SECRET="<Your secret>"
 LENGTH=8
 DOMAIN="example.com"
 MAILDROP="permanent-address@example.com"
 
-INTERFACE="127.0.0.1"
-PORT="10000"
+# Socket type, either "unix" or "inet"
+SOCKETMAP_SOCKET_TYPE="unix"
 
+# INET socket config
+SOCKETMAP_INET_INTERFACE="127.0.0.1"
+SOCKETMAP_INET_PORT="10001"
+
+# UNIX socket config
+SOCKETMAP_UNIX_SOCKET_PATH="/var/run/postfix-trashmail/socket"
+SOCKETMAP_UNIX_SOCKET_OWNER_UID="postifx"
+SOCKETMAP_UNIX_SOCKET_OWNER_GID="postfix"
+SOCKETMAP_UNIX_SOCKET_MODE="0660"
+
+# Name of socketmap service
+# This needs to be provided in postfix's alias_maps directive
+SOCKETMAP_NAME="trashmail"
+
+# MAX length allowed for netstrings
+SOCKETMAP_MAX_NETSTRING_LENGTH=512
+
+# UID of the parser process
+# Use only if listener process is run as root (not recommended)
+#PARSER_RUN_UID="nobody"
+
+# List valid email addresses
 listMails() {
 	for day in yesterday now; do
 		echo "`(date +%Y%m%d -d \"${day}\" | tr -d '\n'; echo -n \"${SHARED_SECRET}\";) | md5sum | cut -c1-${LENGTH}`@${DOMAIN}"
 	done
 }
 
-# Start the listener
-if [ -n "$1" -a "$1" == "-l" ]; then
-	socat TCP-LISTEN:${PORT},fork,reuseaddr,bind=${INTERFACE} SYSTEM:"$0 -q"
+# Output to stderr if -v flag is set
+# $1: Message
+verbose() {
+	[ -n "$_VERBOSE" ] && echo -ne "${1}" 1>&2
+}
+
+# Output a netstring
+# $1: String
+netstring() {
+	echo -n "${#1}:${1},"
+}
+
+# Netstring parser
+# $1: Number of expected netstrings
+parse_netstrings() {
+	local stringsExpected="$1"
+	local stringsRead=0
+	local string=""
+	local expected_length=""
+	local length=0
+	local phase="readlength"
+	while read -n 1 c; do
+		verbose "[${c}]"
+		case "$phase" in
+			"readlength")
+				if ! echo -n "${c}" | grep '[^0-9]' &> /dev/null; then
+					expected_length="${expected_length}${c}"
+					if [ "${expected_length}" -gt "${SOCKETMAP_MAX_NETSTRING_LENGTH}" ]; then
+						echo "ERROR: Netstring to long (${expected_length} > ${SOCKETMAP_MAX_NETSTRING_LENGTH})." 1>&2
+						exit 1
+					fi
+				else
+					if [ "$c" = ":" ]; then
+						phase="readstring"
+						continue;
+					else
+						echo "PARSE ERROR: Digit or \":\" expected while reading length, but got \"${c}\"" 1>&2
+						exit 1
+					fi
+				fi
+				;;
+
+			"readstring")
+				if [ "$length" -lt "$expected_length" ]; then
+					[ -z "${c}" ] && c=" "
+					string="${string}${c}"
+					length=$(($length+1))
+				else
+					if [ "$c" = "," ]; then
+						verbose " --> "
+						verbose "${string}\n"
+						echo "$string"
+						stringsRead=$(($stringsRead+1))
+
+						[ "$stringsExpected" = "$stringsRead" ] && return 0
+
+						expected_length=""
+						length=0
+						string=""
+						phase="readlength"
+					else
+						echo "PARSE ERROR: \",\" (end of string) expected, but got \"${c}\" [expected_length=${expected_length}]" 1>&2
+						exit 1
+					fi
+				fi
+				;;
+		esac
+	done;
+}
+
+# Parse arguments
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-v) _VERBOSE="-v";;
+		-l) _LISTEN=true;;
+		-p) _PARSE=true;;
+		-h) _HELP=true;;
+		 *) _HELP=true;;
+	esac
+	shift
+done;
+
+# Called with -h or wrong arguments
+[ -n "$_HELP" ] && cat <<END && exit
+Usage: $0 [-v] [-l] [-h]
+
+	-v: Verbose output
+	-l: Listen mode
+	-h: Show this help
+END
+
+# Called with -l
+if [ -n "$_LISTEN" ]; then
+	case "$SOCKETMAP_SOCKET_TYPE" in
+		inet) SOCAT_LISTEN="TCP-LISTEN:${SOCKETMAP_INET_PORT},fork,reuseaddr,bind=${SOCKETMAP_INET_INTERFACE}";;
+		unix) SOCAT_LISTEN="UNIX-LISTEN:${SOCKETMAP_UNIX_SOCKET_PATH},fork,mode=${SOCKETMAP_UNIX_SOCKET_MODE},user=${SOCKETMAP_UNIX_SOCKET_OWNER_UID},group=${SOCKETMAP_UNIX_SOCKET_OWNER_GID}";;
+		   *) echo 'ERROR: $SOCKETMAP_SOCKET_TYPE must be "inet" or "unix"' 1>&2 && exit 1;;
+	esac
+	[ -n "${PARSER_RUN_UID}" ] && SOCAT_SU=",su=${PARSER_RUN_UID}"
+	socat "${SOCAT_LISTEN}" SYSTEM:"$0 -p ${_VERBOSE}${SOCAT_SU}"
+	exit
 fi
 
-# Process remote query
-if [ -n "$1" -a "$1" == "-q" ]; then
-	while read q; do
+# Called with -p
+if [ -n "$_PARSE" ]; then
+	verbose "UID  : ${UID}\n"
+	key_offset=$((${#SOCKETMAP_NAME}+1))
+	parse_netstrings 1 | while read q; do
+		key=${q:$key_offset}
 		match=false
+		verbose "Query: ${q}\n"
+		verbose "Key  : ${key}\n"
 		for mail in `listMails`; do
-			if echo -n "$q" | grep -xi "GET ${mail}" &> /dev/null; then
-				echo "200 ${MAILDROP}";
+			verbose "Mail : ${mail}\n"
+			if [ "$key" = "$mail" ]; then
+				verbose "Match: ${key} = ${MAILDROP}\n"
+				netstring "OK ${MAILDROP}";
 				match=true
-				break;
+				exit
 			fi
 		done
-		! $match && echo "500 ADDRESS NOT FOUND"
+		verbose "Match: NONE\n"
+		! $match && netstring "NOTFOUND "
 	done
+	exit
 fi
 
-# List mails
-if [ -z "$1" ]; then
-	listMails
-fi
+# Called without arguments
+listMails
