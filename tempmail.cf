@@ -8,7 +8,7 @@ MAILDROP="permanent-address@example.com"
 SOCKETMAP_SOCKET_TYPE="unix"
 
 # UNIX socket config
-SOCKETMAP_UNIX_SOCKET_PATH="/var/spool/postfix/postfix-trashmail/socket"
+SOCKETMAP_UNIX_SOCKET_PATH="/var/spool/postfix/postfix-tempmail/socket"
 SOCKETMAP_UNIX_SOCKET_OWNER_UID="postfix"
 SOCKETMAP_UNIX_SOCKET_OWNER_GID="postfix"
 SOCKETMAP_UNIX_SOCKET_MODE="0660"
