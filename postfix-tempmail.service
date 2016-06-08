@@ -1,0 +1,10 @@
+[Unit]
+Description=Postfix tempmail socketmap lookup daemon
+Before=postfix.service
+
+[Service]
+User=postfix
+ExecStart=/usr/local/bin/postfix-tempmail -l
+
+[Install]
+WantedBy=postfix.service
