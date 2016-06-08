@@ -1,8 +1,8 @@
 # E-Mail adresses
 SHARED_SECRET="<Your secret>"
-LENGTH=8
 DOMAIN="example.com"
 MAILDROP="permanent-address@example.com"
+LENGTH=8
 
 # Socket type, either "unix" or "inet"
 SOCKETMAP_SOCKET_TYPE="unix"
