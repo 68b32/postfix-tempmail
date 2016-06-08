@@ -18,7 +18,7 @@ SOCKETMAP_INET_INTERFACE="127.0.0.1"
 SOCKETMAP_INET_PORT="10000"
 
 # Name of socketmap service
-# This needs to be provided in postfix's alias_maps directive
+# This needs to be provided in postfix's virtual_alias_maps directive
 SOCKETMAP_NAME="tempmail"
 
 # MAX length allowed for netstrings
